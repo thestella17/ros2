@@ -1,6 +1,6 @@
 # 无人机云台两轴稳定控制
 
-本实验演示机载云台跟踪目标视线时的两轴 PID 稳定控制。目标在画面中平滑摆动，
+本实验演示机载云台跟踪目标视线时的两轴 PID 稳定控制。目标角度平滑摆动，
 控制器输出 pan/tilt 角速度，经过速率限制和死区后驱动云台，最后统计跟随误差。
 
 源码位置：`src/air/uav_gimbal_stabilization/`
@@ -59,9 +59,9 @@ python3 scripts/main.py sim --duration 12 --rate 50 \
 
 | 话题 | 类型 | 说明 |
 |---|---|---|
-| `/uav/gimbal/target` | `geometry_msgs/Vector3` | 目标 pan/tilt 角度 |
-| `/uav/gimbal/cmd` | `geometry_msgs/Vector3` | pan/tilt 角速度指令 |
-| `/uav/gimbal/state` | `geometry_msgs/Vector3` | 当前角度与二维误差 |
+| `/uav/gimbal/target` | `geometry_msgs/Vector3` | `x=target_pan, y=target_tilt, z=0` |
+| `/uav/gimbal/cmd` | `geometry_msgs/Vector3` | `x=pan_rate, y=tilt_rate, z=0` |
+| `/uav/gimbal/state` | `geometry_msgs/Vector3` | `x=pan, y=tilt, z=error_deg` |
 | `/uav/gimbal/status` | `std_msgs/String` | 运行状态和累计指标 |
 
 ## 结果指标
@@ -69,9 +69,11 @@ python3 scripts/main.py sim --duration 12 --rate 50 \
 - 二维角误差 RMSE；
 - 最大角误差；
 - 指令饱和比例；
-- 运行步数和 CSV 记录。
+- 逐步时序 CSV 记录；RMSE、最大误差等汇总指标通过 `status` 和终端输出。
 
 ![两轴云台跟踪响应](../img/air/uav_gimbal_stabilization/response.png)
+
+响应图包含 pan、tilt 和二维误差三个面板，均带坐标刻度。
 
 ## 测试
 
@@ -80,8 +82,9 @@ cd src/air/uav_gimbal_stabilization
 python3 test/test_gimbal_controller.py
 ```
 
-测试覆盖 PID 速率限幅、死区、双轴误差、目标轨迹确定性和闭环收敛。
+测试覆盖 PID 速率限幅、死区、双轴误差、目标轨迹确定性、闭环收敛、空 CSV 头和
+非法 `duration/rate` 拒绝。
 
 ## AI 使用声明
 
-使用 Codex 辅助代码、测试和文档整理；算法参数、运行结果与提交内容由作者复核并负责。
+使用 DeepSeek Harness 辅助代码、测试和文档整理；算法参数、运行结果与提交内容由作者复核并负责。

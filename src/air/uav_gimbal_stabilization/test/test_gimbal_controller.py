@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import os
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "scripts")
@@ -40,6 +42,23 @@ class GimbalControllerTest(unittest.TestCase):
 
     def test_combined_error(self):
         self.assertAlmostEqual(angular_error(3.0, 4.0, 0.0, 0.0), 5.0)
+
+    def test_invalid_duration_is_rejected(self):
+        with self.assertRaises(ValueError):
+            GimbalSimulation(duration=0.0, rate_hz=50.0)
+
+    def test_invalid_rate_is_rejected(self):
+        with self.assertRaises(ValueError):
+            GimbalSimulation(duration=1.0, rate_hz=float("inf"))
+
+    def test_empty_csv_still_has_header(self):
+        simulation = GimbalSimulation(duration=1.0, rate_hz=10.0)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "empty.csv"
+            simulation.write_csv(str(path))
+            header = path.read_text(encoding="utf-8").splitlines()
+        self.assertTrue(header)
+        self.assertEqual(header[0].split(",")[0], "t")
 
 
 if __name__ == "__main__":

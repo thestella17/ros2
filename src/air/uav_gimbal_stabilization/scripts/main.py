@@ -55,17 +55,26 @@ def main(argv=None):
     p_sim.add_argument("--csv", default="")
     p_sim.add_argument("--plot", default="")
     p_sim.add_argument("--ros", action="store_true", help=argparse.SUPPRESS)
-    args = parser.parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if "--ros" in raw_argv:
+        # roslaunch appends private remapping arguments such as __name and
+        # __log. Let rospy consume those while keeping strict parsing offline.
+        args, _ = parser.parse_known_args(raw_argv)
+    else:
+        args = parser.parse_args(raw_argv)
 
     if args.ros:
         _ros_main(args)
         return 0
-    _, metrics = run_simulation(
-        duration=args.duration,
-        rate_hz=args.rate,
-        csv_path=args.csv,
-        plot_path=args.plot,
-    )
+    try:
+        _, metrics = run_simulation(
+            duration=args.duration,
+            rate_hz=args.rate,
+            csv_path=args.csv,
+            plot_path=args.plot,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     print("samples=%d rmse_deg=%.3f max_error_deg=%.3f saturation_ratio=%.3f" % (
         metrics["samples"], metrics["rmse_deg"], metrics["max_error_deg"],
         metrics["saturation_ratio"]))

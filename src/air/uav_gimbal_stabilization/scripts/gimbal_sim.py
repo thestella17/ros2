@@ -9,6 +9,28 @@ import os
 
 from gimbal_controller import GimbalController, angular_error
 
+ROW_FIELDS = (
+    "t",
+    "target_pan",
+    "target_tilt",
+    "pan",
+    "tilt",
+    "pan_rate",
+    "tilt_rate",
+    "error_deg",
+    "saturated",
+)
+
+
+def _positive_finite(name, value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("%s must be a number" % name) from exc
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError("%s must be finite and positive" % name)
+    return value
+
 
 @dataclass(frozen=True)
 class GimbalState:
@@ -44,9 +66,9 @@ class GimbalSimulation:
     """Closed-loop simulation with per-step diagnostics."""
 
     def __init__(self, duration=12.0, rate_hz=50.0, controller=None):
-        self.duration = float(duration)
-        self.rate_hz = float(rate_hz)
-        self.dt = 1.0 / max(self.rate_hz, 1.0)
+        self.duration = _positive_finite("duration", duration)
+        self.rate_hz = _positive_finite("rate_hz", rate_hz)
+        self.dt = 1.0 / self.rate_hz
         self.controller = controller or GimbalController()
         self.plant = GimbalPlant()
         self.elapsed = 0.0
@@ -104,28 +126,37 @@ class GimbalSimulation:
         if parent:
             os.makedirs(parent, exist_ok=True)
         with open(path, "w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=list(self.rows[0]))
+            writer = csv.DictWriter(handle, fieldnames=ROW_FIELDS)
             writer.writeheader()
             writer.writerows(self.rows)
 
     def plot(self, path):
         if not path:
             return
+        if not self.rows:
+            return
         from PIL import Image, ImageDraw
 
-        width, height = 900, 600
+        width, height = 900, 780
         image = Image.new("RGB", (width, height), "white")
         draw = ImageDraw.Draw(image)
-        margin_left, margin_top, panel_h = 75, 35, 235
+        margin_left, panel_h = 75, 160
         panel_w = width - margin_left - 30
 
         def x_of(t):
             return margin_left + panel_w * t / max(self.duration, 1e-9)
 
-        def draw_panel(top, values, color, y_min, y_max, title):
-            draw.rectangle((margin_left, top, margin_left + panel_w, top + panel_h),
-                           outline=(180, 180, 180))
-            draw.text((margin_left, top - 20), title, fill="black")
+        def draw_panel(top, values, color, y_min, y_max, title, draw_axes=True):
+            if draw_axes:
+                draw.rectangle(
+                    (margin_left, top, margin_left + panel_w, top + panel_h),
+                    outline=(180, 180, 180),
+                )
+                draw.text((margin_left, top - 20), title, fill="black")
+                for ratio in (0.0, 0.5, 1.0):
+                    y = top + panel_h * ratio
+                    value = y_max - (y_max - y_min) * ratio
+                    draw.text((8, y - 6), "%.1f" % value, fill=(80, 80, 80))
             span = max(y_max - y_min, 1e-9)
             points = [
                 (x_of(row["t"]), top + panel_h * (1.0 - (value - y_min) / span))
@@ -139,17 +170,69 @@ class GimbalSimulation:
         ]
         pan_min = min(pan_values) - 2.0
         pan_max = max(pan_values) + 2.0
-        first_top = margin_top + 25
-        second_top = first_top + panel_h + 70
-        draw_panel(first_top, [row["target_pan"] for row in self.rows],
-                   (30, 90, 220), pan_min, pan_max, "pan target (blue)")
-        draw_panel(first_top, [row["pan"] for row in self.rows],
-                   (220, 90, 30), pan_min, pan_max, "")
+        tilt_values = [row["target_tilt"] for row in self.rows] + [
+            row["tilt"] for row in self.rows
+        ]
+        tilt_min = min(tilt_values) - 2.0
+        tilt_max = max(tilt_values) + 2.0
+        pan_top = 60
+        tilt_top = pan_top + panel_h + 65
+        error_top = tilt_top + panel_h + 65
+        draw_panel(
+            pan_top,
+            [row["target_pan"] for row in self.rows],
+            (30, 90, 220),
+            pan_min,
+            pan_max,
+            "pan response: target (blue), state (orange)",
+        )
+        draw_panel(
+            pan_top,
+            [row["pan"] for row in self.rows],
+            (220, 90, 30),
+            pan_min,
+            pan_max,
+            "",
+            draw_axes=False,
+        )
+        draw_panel(
+            tilt_top,
+            [row["target_tilt"] for row in self.rows],
+            (30, 90, 220),
+            tilt_min,
+            tilt_max,
+            "tilt response: target (blue), state (orange)",
+        )
+        draw_panel(
+            tilt_top,
+            [row["tilt"] for row in self.rows],
+            (220, 90, 30),
+            tilt_min,
+            tilt_max,
+            "",
+            draw_axes=False,
+        )
         errors = [row["error_deg"] for row in self.rows]
-        draw_panel(second_top, errors, (200, 40, 40),
-                   0.0, max(max(errors) + 1.0, 1.0), "2-axis error (deg)")
-        draw.text((margin_left, height - 28),
-                  "time: 0 s to %.1f s" % self.duration, fill="black")
+        draw_panel(
+            error_top,
+            errors,
+            (200, 40, 40),
+            0.0,
+            max(max(errors) + 1.0, 1.0),
+            "2-axis error (deg)",
+        )
+        for index in range(7):
+            tick = self.duration * index / 6.0
+            draw.text(
+                (x_of(tick) - 8, error_top + panel_h + 8),
+                "%.0f" % tick,
+                fill=(60, 60, 60),
+            )
+        draw.text(
+            (margin_left + panel_w / 2 - 25, height - 28),
+            "time (s)",
+            fill="black",
+        )
         path = os.path.expanduser(path)
         parent = os.path.dirname(path)
         if parent:
@@ -174,7 +257,10 @@ def main(argv=None):
     parser.add_argument("--csv", default="")
     parser.add_argument("--plot", default="")
     args = parser.parse_args(argv)
-    _, metrics = run_simulation(args.duration, args.rate, args.csv, args.plot)
+    try:
+        _, metrics = run_simulation(args.duration, args.rate, args.csv, args.plot)
+    except ValueError as exc:
+        parser.error(str(exc))
     print("samples=%d rmse_deg=%.3f max_error_deg=%.3f saturation_ratio=%.3f" % (
         metrics["samples"], metrics["rmse_deg"], metrics["max_error_deg"],
         metrics["saturation_ratio"]))

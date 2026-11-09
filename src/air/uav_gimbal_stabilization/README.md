@@ -26,6 +26,9 @@ roslaunch uav_gimbal_stabilization main.launch
 - `/uav/gimbal/state`：`geometry_msgs/Vector3`，当前角度和二维误差；
 - `/uav/gimbal/status`：`std_msgs/String`。
 
+`Vector3` 字段约定：`target = (pan, tilt, 0)`，`cmd = (pan_rate, tilt_rate, 0)`，
+`state = (pan, tilt, error_deg)`。
+
 默认结果写入 `~/.ros/uav_gimbal_stabilization/`，包括 CSV 和响应曲线。
 
 ## 纯 Python 测试
